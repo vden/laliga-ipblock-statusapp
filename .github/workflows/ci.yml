@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    # macos-26 ships Xcode 26 (Swift 6.2); the sources build in Swift 6 mode,
+    # which the older images' default Xcode cannot do.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Test
+        run: ./test.sh
+
+      - name: Build
+        # Pull requests get no secrets, so CI builds are signed ad hoc. Developer
+        # ID signing and notarization happen in release.yml.
+        env:
+          CODESIGN_IDENTITY: "-"
+        run: ./build.sh
+
+      - name: Zip app
+        # upload-artifact drops the executable bit; ditto keeps the bundle intact.
+        run: ditto -c -k --keepParent build/HayFutbol.app build/HayFutbol.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HayFutbol-${{ github.sha }}
+          path: build/HayFutbol.zip
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: shellcheck *.sh

@@ -1,0 +1,75 @@
+name: Release
+
+# Pushing a tag like v1.2.0 builds a signed, notarized DMG and attaches it to a
+# draft release, to be checked and published by hand.
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Test
+        run: ./test.sh
+
+      - name: Set up signing and notarization
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          # An unsigned DMG would be refused by Gatekeeper on every Mac it
+          # reached, so missing credentials fail the release outright.
+          for name in MACOS_CERTIFICATE KEYCHAIN_PASSWORD APPLE_ID APP_PASSWORD TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::secret $name is not set"
+              exit 1
+            fi
+          done
+
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PWD" \
+              -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+              -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          # package.sh finds the identity through the search list, and
+          # notarytool looks its profile up in the default keychain.
+          security list-keychains -d user -s "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          xcrun notarytool store-credentials ci-notary --keychain "$KEYCHAIN" \
+              --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD"
+
+      - name: Build, notarize and package
+        env:
+          # Empty falls back to the first Developer ID identity in the keychain.
+          CODESIGN_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+          NOTARY_PROFILE: ci-notary
+        run: ./package.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" "build/HayFutbol-${version}.dmg" \
+              --draft --title "HayFutbol ${version}" --generate-notes
+
+      - name: Remove keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
