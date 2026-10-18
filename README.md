@@ -3,7 +3,7 @@
 A menu bar icon showing whether LaLiga's IP blocks are on right now, according to
 [hayahora.futbol](https://hayahora.futbol).
 
-Download the DMG from [Releases](https://github.com/vden/laliga-ipblock-status/releases).
+Download the DMG from [Releases](https://github.com/vden/laliga-ipblock-statusapp/releases).
 It is signed and notarized, runs on Apple silicon and Intel, macOS 13 or later.
 
 - Plain ball: no blocking.
