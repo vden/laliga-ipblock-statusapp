@@ -1,7 +1,8 @@
 name: Release
 
 # Pushing a tag like v1.2.0 builds a signed, notarized DMG and attaches it to a
-# draft release, to be checked and published by hand.
+# draft release, to be checked and published by hand. A tag that already has a
+# release (one made locally with package.sh and gh) is left alone.
 
 on:
   push:
@@ -13,12 +14,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::$GITHUB_REF_NAME already has a release; nothing to build"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v5
+        if: steps.existing.outputs.found != 'true'
 
       - name: Test
+        if: steps.existing.outputs.found != 'true'
         run: ./test.sh
 
       - name: Set up signing and notarization
+        if: steps.existing.outputs.found != 'true'
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -56,6 +70,7 @@ jobs:
               --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD"
 
       - name: Build, notarize and package
+        if: steps.existing.outputs.found != 'true'
         env:
           # Empty falls back to the first Developer ID identity in the keychain.
           CODESIGN_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
@@ -63,6 +78,7 @@ jobs:
         run: ./package.sh "${GITHUB_REF_NAME#v}"
 
       - name: Create draft release
+        if: steps.existing.outputs.found != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,5 +87,5 @@ jobs:
               --draft --title "HayFutbol ${version}" --generate-notes
 
       - name: Remove keychain
-        if: always()
+        if: always() && steps.existing.outputs.found != 'true'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -70,7 +70,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             // Center instead of a season's worth of them piling up.
             do {
                 try await center.add(UNNotificationRequest(identifier: "block-status", content: content, trigger: nil))
-                log.info("posted: \(title, privacy: .public)")
+                log.notice("posted: \(title, privacy: .public)")
             } catch {
                 log.error("post failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -81,7 +81,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private func authorize() async -> Bool {
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .sound])
-            log.info("authorized: \(granted)")
+            log.notice("authorized: \(granted)")
             return granted
         } catch {
             log.error("authorization failed: \(error.localizedDescription, privacy: .public)")
