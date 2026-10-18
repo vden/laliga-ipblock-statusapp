@@ -2,7 +2,7 @@ import AppKit
 import os
 import UserNotifications
 
-private let log = Logger(subsystem: "com.voskvitsov.HayFutbol", category: "notifications")
+private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HayFutbol", category: "notifications")
 
 /// Posts a notification when the verdict flips between blocked and clear.
 ///
